@@ -68,6 +68,7 @@ function FacebookPostsToSpotify([DateTime]$date, $cacheFilePath, $facebookToken,
             $data = Invoke-RestMethod -Method Get -Uri $uri
         }
     }
+    $songs | Export-CliXml $filename
     foreach ($song in $($songs.Values | Sort-Object -Property date)) {
         Write-Host  $song.id ";" $song.date ";" $song.postlink ";" $song.youtubeTitle ";" $song.cleanupSongName.artist ";" $song.cleanupSongName.name
     }
