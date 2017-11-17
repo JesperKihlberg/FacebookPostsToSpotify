@@ -1,8 +1,10 @@
 
 function FacebookPostsToSpotify([DateTime]$date, $cacheFilePath, $facebookToken, $facebookGroupId, $iftttApiKey, $youtubeApiKey) {
+    Write-Host $date
     $weeknb = get-date $date -uformat %V
     $year = $date.Year
     $day = $date.dayofweek
+    $unixdate = [int][double]::Parse((Get-Date -Date $date -UFormat %s))
     $filename = "${cacheFilePath}songs_${year}_${weeknb}.xml"
     Write-Host $filename
     $songs = @{}
@@ -10,12 +12,13 @@ function FacebookPostsToSpotify([DateTime]$date, $cacheFilePath, $facebookToken,
         $songs = Import-CliXml $filename
     }
     $limit = 10
-    $uri = "https://graph.facebook.com/${facebookGroupId}/feed?fields=link,message,is_published,created_time&limit=${limit}&access_token=${facebookToken}"
+    $uri = "https://graph.facebook.com/${facebookGroupId}/feed?fields=link,message,is_published,created_time&limit=${limit}&access_token=${facebookToken}&since=${unixdate}"
+    write-host $uri
     $data = Invoke-RestMethod -Method Get -Uri $uri
     
-#     $regexText = @'
-# (?:[0-9A-Z-]+\.)?(?:youtu\.be\/|youtube(?:-nocookie)?\.com\S*?[^\w\s-])([\w-]{11})(?=[^\w-]|$)(?![?=&+%\w.-]*(?:['"][^<>]*>|<\/a>))[?=&+%\w.-]*
-# '@
+    #     $regexText = @'
+    # (?:[0-9A-Z-]+\.)?(?:youtu\.be\/|youtube(?:-nocookie)?\.com\S*?[^\w\s-])([\w-]{11})(?=[^\w-]|$)(?![?=&+%\w.-]*(?:['"][^<>]*>|<\/a>))[?=&+%\w.-]*
+    # '@
     $regexText = @'
 (?:.+?)?(?:\/v\/|watch\/|\?v=|\&v=|youtu\.be\/|\/v=|^youtu\.be\/|watch\%3Fv\%3D)([a-zA-Z0-9_-]{11})+
 '@
@@ -26,12 +29,12 @@ function FacebookPostsToSpotify([DateTime]$date, $cacheFilePath, $facebookToken,
             $created_time = get-date $post.created_time 
             if ($created_time.Date -eq $date.Date) {
                 if (!$songs.ContainsKey($post.id)) {
-                    $fbPost = @{ "id" = $post.id; 
-                        "date" = $post.created_time; 
-                        "postlink" = $post.link; 
-                        "message" = $post.message;
+                    $fbPost = @{ "id"  = $post.id; 
+                        "date"         = $post.created_time; 
+                        "postlink"     = $post.link; 
+                        "message"      = $post.message;
                         "is_published" = $post.is_published;
-                        "type" = "unknown"; 
+                        "type"         = "unknown"; 
                     }
                     $regexMatch = $regex.Match($post.link)
                     if ($regexMatch.Captures.groups.length -gt 0) {
@@ -56,16 +59,23 @@ function FacebookPostsToSpotify([DateTime]$date, $cacheFilePath, $facebookToken,
                     $songs.Add($post.id, $fbPost)
                 }
             }
-            else {
-                if ($created_time.Date -lt $date.Date) {
-                    $lastElementAtDate = 0
-                    break;
-                }
-            }
+            # else {
+            #     if ($created_time.Date -lt $date.Date) {
+            #         Write-Host $created_time.Date
+            #         Write-Host $date.Date
+            #         $lastElementAtDate = 0
+            #         break;
+            #     }
+            # }
         }
         if ($lastElementAtDate -eq 1) {
             $uri = $data.paging.next
-            $data = Invoke-RestMethod -Method Get -Uri $uri
+            if ($uri) {
+                $data = Invoke-RestMethod -Method Get -Uri $uri
+            }
+            else {
+                break
+            }
         }
     }
     $songs | Export-CliXml $filename
@@ -95,7 +105,7 @@ function cleanupSongName($songname) {
 function addSongNameToSpotify($artist, $name, $iftttApiKey) {
     $spotUri = "https://maker.ifttt.com/trigger/add_song_to_spotify/with/key/${iftttApiKey}"
     $params = @{"value1" = "$artist";
-        "value2" = "$name";
+        "value2"         = "$name";
     }
     Invoke-WebRequest -Uri $spotUri -Method POST -Body $params
 }
